@@ -46,8 +46,10 @@ onMounted(async () => {
   core.on('sync.started', () => { busy.value = true })
   core.on('sync.completed', async (payload) => { busy.value = false; message.value = payload.inserted ? `发现 ${payload.inserted} 篇新文章` : (payload.errors?.length ? '部分内容暂时无法更新' : '已是最新内容'); await reload() })
   core.on('articles.new_batch', payload => notify('发现新文章', `${payload.count} 篇新内容已经整理到工作台`))
+  core.on('auth.progress', payload => { message.value = payload.message })
   core.on('auth.completed', async () => { message.value = '微信读书已连接'; await reload() })
   core.on('auth.failed', payload => message.value = payload.message)
+  core.on('link_resolution.progress', payload => { message.value = payload.message })
   core.on('credential.expired', payload => { message.value = payload.message; notify('需要重新连接', payload.message) })
   core.on('provider.cooldown', payload => message.value = payload.message)
   core.on('core.error', payload => message.value = payload.message)
@@ -81,7 +83,7 @@ async function sync(sourceId = '') {
 }
 async function resolveLink() {
   if (!addUrl.value.trim()) return
-  busy.value = true; resolvedSource.value = null
+  busy.value = true; resolvedSource.value = null; message.value = '正在读取文章信息…'
   try { resolvedSource.value = await core.call('subscriptions.resolve_link', { url: addUrl.value.trim() }) }
   catch (error: any) { message.value = error.message }
   finally { busy.value = false }
@@ -144,9 +146,13 @@ function applyTheme(theme?: string) {
 }
 async function reconnect(sourceId = '') {
   const id = sourceId || bootstrap.value.sources[0]?.id
-  if (!id) { page.value = 'sources'; message.value = '请先添加一个公众号'; return }
-  await core.call('auth.reconnect', { source_id: id })
-  message.value = '连接窗口已经打开'
+  if (!id) { page.value = 'sources'; message.value = '?????????'; return }
+  try {
+    await core.call('auth.reconnect', { source_id: id })
+    message.value = '????????'
+  } catch (error: any) {
+    message.value = error.message
+  }
 }
 async function toggleRefreshPause() {
   const paused = !bootstrap.value.settings.refresh_paused

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import date, datetime, timedelta
 
+from gzhreader_core.browser.auth import classify_articles_payload
 from gzhreader_core.credentials import CredentialVault
 from gzhreader_core.scheduler import Scheduler
 from gzhreader_core.storage import Storage
@@ -26,3 +27,9 @@ def test_scheduler_reschedules_and_respects_briefing_skip(tmp_path):
     assert timedelta(minutes=14) < next_refresh - datetime.now().astimezone() < timedelta(minutes=16)
     storage.update_settings({"briefing_time": "00:01", "briefing_skip_day": date.today().isoformat()})
     assert scheduler.briefing_due_now() is False
+
+
+def test_weread_browser_response_classification():
+    assert classify_articles_payload({"reviews": []})[0] == "ready"
+    assert classify_articles_payload({"errCode": -2041, "errMsg": "-2041"})[0] == "captcha"
+    assert classify_articles_payload({"errCode": -2010, "errMsg": "user missing"})[0] == "login"

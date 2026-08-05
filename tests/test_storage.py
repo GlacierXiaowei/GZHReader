@@ -40,3 +40,13 @@ def test_settings_validation(tmp_path):
         assert "刷新频率" in str(exc)
     else:
         raise AssertionError("invalid refresh option accepted")
+
+
+def test_connection_cooldown_round_trip(tmp_path):
+    storage = Storage(tmp_path / "data.db")
+    until = "2026-08-06T03:00:00+00:00"
+    storage.set_connection_state("weread", "cooldown", "????", True, until)
+    state = storage.connection_state("weread")
+    assert state["state"] == "cooldown"
+    assert state["reconnect_required"] == 1
+    assert state["cooldown_until"] == until

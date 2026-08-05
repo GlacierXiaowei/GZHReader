@@ -5,7 +5,7 @@ import logging
 import sys
 import threading
 from dataclasses import asdict, is_dataclass
-from datetime import date, datetime
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -34,7 +34,10 @@ class CoreApp:
         self.storage = Storage(self.paths.db, self.paths.backups)
         self.vault = CredentialVault(self.paths.secrets)
         self.provider = WeReadProvider(self.vault)
-        self.resolver = ArticleLinkResolver()
+        self.resolver = ArticleLinkResolver(
+            self.paths.link_browser_profile,
+            lambda payload: self.emit("link_resolution.progress", payload),
+        )
         self.summarizer = Summarizer(self.vault)
         self.fetcher = ArticleContentFetcher(ArticleFetchConfig(), RSSConfig())
         self.reader = ReaderService(self.storage, self.provider, self.resolver, self.fetcher, self.summarizer)
@@ -53,7 +56,7 @@ class CoreApp:
         if method == "app.bootstrap":
             return self.bootstrap()
         if method == "app.health":
-            return {"ok": True, "connection": self.provider.health().to_dict(), "scheduler": self.scheduler.status()}
+            return {"ok": True, "connection": self._connection_status(), "scheduler": self.scheduler.status()}
         if method == "subscriptions.resolve_link":
             return self.reader.resolve_link(str(params["url"]))
         if method == "subscriptions.add":
@@ -109,11 +112,13 @@ class CoreApp:
         if method == "ai.test_connection":
             return self.summarizer.test(params)
         if method == "auth.start":
+            self._ensure_auth_allowed()
             return self._background_auth(str(params["source_id"]))
         if method == "auth.cancel":
             self.login.cancel()
             return {"ok": True}
         if method == "auth.reconnect":
+            self._ensure_auth_allowed()
             source_id = str(params.get("source_id") or self._first_source_id())
             if not source_id:
                 raise ValueError("请先添加一个公众号")
@@ -141,13 +146,42 @@ class CoreApp:
             "articles": self.storage.articles(limit=200),
             "briefings": self.storage.briefings(),
             "settings": {**self.storage.settings(), "ai": self.summarizer.public_config()},
-            "connection": health.to_dict(),
+            "connection": self._connection_status(),
             "scheduler": self.scheduler.status(),
         }
 
     def shutdown(self) -> None:
         self.login.cancel()
         self.scheduler.stop()
+
+    def _connection_status(self) -> dict[str, Any]:
+        stored = self.storage.connection_state("weread")
+        if stored and stored.get("state") == "cooldown":
+            raw_until = str(stored.get("cooldown_until") or "")
+            try:
+                until = datetime.fromisoformat(raw_until)
+            except ValueError:
+                until = None
+            if until and until > datetime.now(timezone.utc):
+                return {
+                    "state": "cooldown",
+                    "message": str(stored.get("message") or "人机验证尝试过于频繁，请稍后再试"),
+                    "reconnect_required": True,
+                    "cooldown_until": raw_until,
+                }
+        return self.provider.health().to_dict()
+
+    def _ensure_auth_allowed(self) -> None:
+        status = self._connection_status()
+        if status.get("state") != "cooldown":
+            return
+        raw_until = str(status.get("cooldown_until") or "")
+        try:
+            until = datetime.fromisoformat(raw_until).astimezone()
+            label = until.strftime("%m月%d日 %H:%M")
+        except ValueError:
+            label = "稍后"
+        raise ValueError(f"微信暂时限制了验证尝试，请在 {label} 后再试")
 
     def _update_settings(self, values: dict[str, Any]) -> dict[str, Any]:
         old = self.storage.settings()
@@ -193,11 +227,21 @@ class CoreApp:
             try:
                 result = self.login.run(source_id, self.emit)
                 if result.get("ok"):
+                    payload = result.get("articles_payload")
+                    if isinstance(payload, dict):
+                        self.provider.cache_articles_page(source_id, 0, payload)
                     self.storage.set_connection_state("weread", "ready", "微信读书已连接")
                     self.reader.sync(self.emit, source_id, force=True)
             except Exception as exc:
                 logger.exception("WeRead login failed")
-                self.emit("auth.failed", {"message": str(exc)})
+                message = str(exc) or "连接没有完成"
+                if "过于频繁" in message or "稍后再试" in message:
+                    cooldown_until = (datetime.now(timezone.utc) + timedelta(hours=6)).isoformat()
+                    self.storage.set_connection_state("weread", "cooldown", message, True, cooldown_until)
+                    self.emit("provider.cooldown", {"message": message, "cooldown_until": cooldown_until})
+                else:
+                    self.storage.set_connection_state("weread", "disconnected", message, True)
+                    self.emit("auth.failed", {"message": message})
 
         threading.Thread(target=run, name="gzhreader-auth", daemon=True).start()
         return {"accepted": True}

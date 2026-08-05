@@ -12,6 +12,7 @@ class AppPaths:
     logs: Path
     briefings: Path
     browser_profile: Path
+    link_browser_profile: Path
     secrets: Path
     backups: Path
 
@@ -26,6 +27,7 @@ def get_paths() -> AppPaths:
         logs=root / "logs",
         briefings=documents / "GZHReader" / "Briefings",
         browser_profile=root / "browser",
+        link_browser_profile=root / "link-browser",
         secrets=root / "secrets",
         backups=root / "backups",
     )
@@ -34,6 +36,7 @@ def get_paths() -> AppPaths:
         value.logs,
         value.briefings,
         value.browser_profile,
+        value.link_browser_profile,
         value.secrets,
         value.backups,
     ):

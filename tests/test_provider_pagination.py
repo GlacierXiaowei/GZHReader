@@ -51,3 +51,43 @@ def test_auth_error_is_classified(tmp_path):
         assert exc.reconnect
     else:
         raise AssertionError("auth error was not raised")
+
+
+def test_current_wpa_header_is_preserved():
+    headers = WeReadProvider._headers(
+        "wr_vid=1; wr_skey=skey",
+        "signed-value",
+        True,
+        auth_header_name="x-wrpa-0",
+        user_agent="Browser UA",
+        referer="https://weread.qq.com/web/mp/reader/encoded",
+    )
+    assert headers["x-wrpa-0"] == "signed-value"
+    assert headers["User-Agent"] == "Browser UA"
+    assert headers["Referer"].endswith("/web/mp/reader/encoded")
+    assert "x-wr-ticket" not in headers
+
+
+def test_captcha_headers_include_randstr():
+    headers = WeReadProvider._headers(
+        "wr_vid=1; wr_skey=skey",
+        "captcha-ticket",
+        True,
+        auth_header_name="x-wr-ticket",
+        randstr="captcha-randstr",
+    )
+    assert headers["x-wr-ticket"] == "captcha-ticket"
+    assert headers["x-wr-randstr"] == "captcha-randstr"
+
+
+def test_prefetched_browser_page_avoids_immediate_http_replay(tmp_path):
+    vault = CredentialVault(tmp_path)
+    provider = WeReadProvider(vault, client_factory=FakeClient, sleep=lambda _: None)
+    provider.cache_articles_page(
+        "MP_WXS_1",
+        0,
+        {"reviews": [{"subReviews": [review("browser-result", 300)]}]},
+    )
+    batch = provider.list_articles(SourceProfile("MP_WXS_1", "Account"), limit=20)
+    assert [item.origin_id for item in batch.articles] == ["browser-result"]
+    assert batch.pages_scanned == 1

@@ -4,7 +4,21 @@ from datetime import datetime, timezone
 
 from gzhreader_core.models import SourceProfile
 from gzhreader_core.providers.resolver import ArticleLinkResolver
-from gzhreader_core.providers.weread import build_mp_url, extract_mp_content, parse_mp_articles
+from gzhreader_core.providers.weread import (
+    build_mp_reader_url,
+    build_mp_url,
+    encode_weread_id,
+    extract_mp_content,
+    parse_mp_articles,
+)
+
+
+def test_weread_reader_id_encoding_and_mp_url():
+    assert encode_weread_id("41598972") == "c9d327e0727abffcc9d74ab"
+    assert encode_weread_id("MP_WXS_3916483328") == "3634290224d505f5758535f333931363438333332384b2"
+    assert build_mp_reader_url("MP_WXS_3916483328") == (
+        "https://weread.qq.com/web/mp/reader/3634290224d505f5758535f333931363438333332384b2"
+    )
 
 
 def test_biz_decode_and_metadata_extract():
@@ -19,6 +33,77 @@ def test_biz_decode_and_metadata_extract():
     assert value["name"] == "测试公众号"
     assert value["title"] == "文章标题"
     assert value["article_id"] == "1-2-3"
+
+
+
+
+def test_extracts_modern_metadata_and_embedded_biz():
+    resolver = ArticleLinkResolver()
+    html = """
+    <html><head>
+      <meta property="og:title" content="Modern article">
+      <meta property="og:article:author" content="Modern account">
+      <meta property="og:image" content="https://img/cover.jpg">
+      <meta name="description" content="Account description">
+    </head><body>
+      <a href="https://mp.weixin.qq.com/s?__biz=Mzg5Mjc3MjIyMA%3D%3D&amp;mid=12&amp;idx=1">source</a>
+    </body></html>
+    """
+    value = resolver._extract(html, "https://mp.weixin.qq.com/s/short-id")
+    assert value["biz"] == "Mzg5Mjc3MjIyMA=="
+    assert value["name"] == "Modern account"
+    assert value["title"] == "Modern article"
+    assert value["intro"] == "Account description"
+
+
+def test_captcha_response_triggers_browser_fallback(monkeypatch):
+    resolver = ArticleLinkResolver()
+    captcha_html = '<html><script>var poc_token = "token";</script><div>\u8bf7\u5b8c\u6210\u9a8c\u8bc1</div></html>'
+    article_html = """
+    <html><body><h1 id="activity-name">Article</h1><strong id="js_name">Test account</strong>
+    <script>var biz = 'Mzg5Mjc3MjIyMA==';</script></body></html>
+    """
+    browser_calls = []
+
+    class FakeResponse:
+        text = captcha_html
+        url = "https://mp.weixin.qq.com/mp/wappoc_appmsgcaptcha?poc_token=token"
+
+        @staticmethod
+        def raise_for_status():
+            return None
+
+    class FakeClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return None
+
+        @staticmethod
+        def get(url):
+            return FakeResponse()
+
+    def browser_fetch(url):
+        browser_calls.append(url)
+        return article_html, url
+
+    monkeypatch.setattr("gzhreader_core.providers.resolver.httpx.Client", FakeClient)
+    monkeypatch.setattr(resolver, "_browser_fetch", browser_fetch)
+
+    result = resolver.resolve_source("https://mp.weixin.qq.com/s/example")
+    assert browser_calls == ["https://mp.weixin.qq.com/s/example"]
+    assert result["id"] == "MP_WXS_3892772220"
+    assert result["name"] == "Test account"
+
+
+def test_challenge_detection():
+    assert ArticleLinkResolver._is_challenge("", "https://mp.weixin.qq.com/mp/wappoc_appmsgcaptcha?poc_token=x")
+    assert ArticleLinkResolver._is_challenge("<div>\u8bf7\u5b8c\u6210\u9a8c\u8bc1</div>", "https://mp.weixin.qq.com/s/a")
+    assert not ArticleLinkResolver._is_challenge("<h1>normal article</h1>", "https://mp.weixin.qq.com/s/a")
 
 
 def test_parse_weread_articles_and_content():

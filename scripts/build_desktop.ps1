@@ -17,8 +17,9 @@ if (-not (Get-Command link.exe -ErrorAction SilentlyContinue)) {
         throw "未找到 Visual Studio Build Tools 2022。"
     }
     $EnvironmentLines = & cmd.exe /d /s /c "`"$VsDevCmd`" -arch=x64 -host_arch=x64 >nul && set"
+    $ImportedVariables = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
     foreach ($Line in $EnvironmentLines) {
-        if ($Line -match '^([^=]+)=(.*)$') {
+        if ($Line -match '^([^=]+)=(.*)$' -and $ImportedVariables.Add($Matches[1])) {
             [Environment]::SetEnvironmentVariable($Matches[1], $Matches[2], 'Process')
         }
     }

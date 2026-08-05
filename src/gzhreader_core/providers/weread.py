@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import time
 from datetime import datetime, timezone
 from typing import Callable
@@ -32,6 +33,35 @@ def build_mp_url(original_id: str) -> str:
     return f"https://mp.weixin.qq.com/s/{token}"
 
 
+def encode_weread_id(value: str) -> str:
+    """Encode a WeRead book id for reader-page URLs."""
+    source = str(value or "").strip()
+    if not source:
+        raise ValueError("微信读书内容标识无效")
+    digest = hashlib.md5(source.encode("utf-8")).hexdigest()
+    if source.isdigit():
+        kind = "3"
+        chunks = [format(int(source[index : index + 9]), "x") for index in range(0, len(source), 9)]
+    else:
+        kind = "4"
+        chunks = ["".join(format(byte, "x") for byte in source.encode("utf-8"))]
+    encoded = digest[:3] + kind + "2" + digest[-2:]
+    for index, chunk in enumerate(chunks):
+        encoded += format(len(chunk), "02x") + chunk
+        if index < len(chunks) - 1:
+            encoded += "g"
+    if len(encoded) < 20:
+        encoded += digest[: 20 - len(encoded)]
+    return encoded + hashlib.md5(encoded.encode("utf-8")).hexdigest()[:3]
+
+
+def build_mp_reader_url(book_id: str) -> str:
+    source = str(book_id or "").strip()
+    if not source.startswith("MP_WXS_"):
+        raise ValueError("公众号标识无效")
+    return f"{BASE_URL}/web/mp/reader/{encode_weread_id(source)}"
+
+
 def raise_response_error(payload: dict) -> None:
     code = payload.get("errCode", payload.get("errcode", 0))
     try:
@@ -41,6 +71,8 @@ def raise_response_error(payload: dict) -> None:
     if not code:
         return
     message = str(payload.get("errMsg") or payload.get("errmsg") or "内容暂时无法更新")
+    if code == -2041:
+        raise WeReadError(code, "需要重新完成人机验证", reconnect=True)
     if code in AUTH_CODES:
         raise WeReadError(code, "登录状态已失效", reconnect=True)
     if code in RATE_LIMIT_CODES:
@@ -114,15 +146,20 @@ class WeReadProvider:
         self.client_factory = client_factory
         self.sleep = sleep
         self._health: ProviderHealth | None = None
+        self._prefetched_pages: dict[tuple[str, int], dict] = {}
 
     def credentials(self) -> dict:
         return self.vault.load("weread")
+
+    def cache_articles_page(self, source_id: str, offset: int, payload: dict) -> None:
+        if isinstance(payload, dict):
+            self._prefetched_pages[(source_id, int(offset))] = payload
 
     def health(self) -> ProviderHealth:
         if self._health and self._health.state != "ready":
             return self._health
         credentials = self.credentials()
-        if credentials.get("cookie") and credentials.get("ticket"):
+        if credentials.get("cookie") and (credentials.get("ticket") or credentials.get("auth_header_value")):
             return ProviderHealth("ready", "微信读书已连接")
         return ProviderHealth("disconnected", "需要连接微信读书", True)
 
@@ -138,27 +175,59 @@ class WeReadProvider:
             self._health = ProviderHealth("error", "内容暂时无法更新")
 
     @staticmethod
-    def _headers(cookie: str, ticket: str = "", include_ticket: bool = False) -> dict[str, str]:
+    def _headers(
+        cookie: str,
+        ticket: str = "",
+        include_ticket: bool = False,
+        *,
+        auth_header_name: str = "x-wr-ticket",
+        randstr: str = "",
+        wpa: str = "",
+        user_agent: str = "",
+        referer: str = "",
+    ) -> dict[str, str]:
         if not cookie:
             raise WeReadError("missing", "需要连接微信读书", reconnect=True)
         headers = {
             "Cookie": cookie,
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            "User-Agent": user_agent or "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
             "Accept": "application/json, text/plain, */*",
             "Accept-Language": "zh-CN,zh;q=0.9",
-            "Referer": f"{BASE_URL}/",
+            "Referer": referer or f"{BASE_URL}/",
         }
         if include_ticket:
             if not ticket:
                 raise WeReadError("missing_ticket", "登录状态已失效", reconnect=True)
-            headers["x-wr-ticket"] = ticket
+            header_name = auth_header_name.lower()
+            if header_name not in {"x-wr-ticket", "x-wrpa-0"}:
+                header_name = "x-wr-ticket"
+            headers[header_name] = ticket
+            if header_name == "x-wr-ticket":
+                if randstr:
+                    headers["x-wr-randstr"] = randstr
+                if wpa:
+                    headers["x-wrpa-0"] = wpa
         return headers
 
     def _credential_headers(self, include_ticket: bool = False) -> dict[str, str]:
         credentials = self.credentials()
-        return self._headers(str(credentials.get("cookie") or ""), str(credentials.get("ticket") or ""), include_ticket)
+        ticket = str(credentials.get("auth_header_value") or credentials.get("ticket") or "")
+        return self._headers(
+            str(credentials.get("cookie") or ""),
+            ticket,
+            include_ticket,
+            auth_header_name=str(credentials.get("auth_header_name") or "x-wr-ticket"),
+            randstr=str(credentials.get("randstr") or ""),
+            wpa=str(credentials.get("wpa") or ""),
+            user_agent=str(credentials.get("user_agent") or ""),
+            referer=str(credentials.get("referer") or ""),
+        )
 
     def _get_articles_page(self, source_id: str, offset: int, headers: dict[str, str] | None = None) -> dict:
+        prefetched = self._prefetched_pages.pop((source_id, int(offset)), None)
+        if prefetched is not None:
+            raise_response_error(prefetched)
+            return prefetched
         try:
             with self.client_factory(timeout=30, follow_redirects=True) as client:
                 response = client.get(
@@ -250,7 +319,20 @@ class WeReadProvider:
             raise WeReadError(response.status_code, "正文暂时无法获取")
         return extract_mp_content(response.text)
 
-    def validate_credentials(self, source_id: str, cookie: str, ticket: str) -> None:
-        headers = self._headers(cookie, ticket, True)
+    def validate_credentials(self, source_id: str, credentials: dict | str, ticket: str = "") -> None:
+        if isinstance(credentials, dict):
+            auth_value = str(credentials.get("auth_header_value") or credentials.get("ticket") or "")
+            headers = self._headers(
+                str(credentials.get("cookie") or ""),
+                auth_value,
+                True,
+                auth_header_name=str(credentials.get("auth_header_name") or "x-wr-ticket"),
+                randstr=str(credentials.get("randstr") or ""),
+                wpa=str(credentials.get("wpa") or ""),
+                user_agent=str(credentials.get("user_agent") or ""),
+                referer=str(credentials.get("referer") or ""),
+            )
+        else:
+            headers = self._headers(str(credentials), ticket, True)
         self._get_articles_page(source_id, 0, headers=headers)
         self.mark_ready()

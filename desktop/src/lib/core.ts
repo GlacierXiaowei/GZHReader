@@ -113,10 +113,11 @@ class CoreClient {
     if (!this.child) throw new Error('本地核心暂时无法启动')
     const id = ++this.id
     const promise = new Promise<T>((resolve, reject) => {
+      const timeoutMs = method === 'subscriptions.resolve_link' ? 180_000 : 120_000
       const timer = setTimeout(() => {
         this.pending.delete(id)
         reject(new Error('操作等待时间较长，请稍后查看结果'))
-      }, 120_000)
+      }, timeoutMs)
       this.pending.set(id, { resolve, reject, timer })
     })
     await this.child.write(JSON.stringify({ jsonrpc: '2.0', id, method, params }) + '\n')

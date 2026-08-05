@@ -10,7 +10,7 @@ from typing import Any
 
 from .models import ArticleRecord, SourceProfile
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 REFRESH_OPTIONS = {0, 15, 30, 60, 120, 240}
 class ClosingConnection(sqlite3.Connection):
     def __exit__(self, exc_type, exc_value, traceback):
@@ -136,6 +136,7 @@ class Storage:
                     state TEXT NOT NULL,
                     message TEXT NOT NULL DEFAULT '',
                     reconnect_required INTEGER NOT NULL DEFAULT 0,
+                    cooldown_until TEXT NOT NULL DEFAULT '',
                     updated_at TEXT NOT NULL
                 );
                 """
@@ -165,6 +166,9 @@ class Storage:
                 "last_attempt_at": "TEXT NOT NULL DEFAULT ''",
                 "unsupported_reason": "TEXT NOT NULL DEFAULT ''",
                 "updated_at": "TEXT NOT NULL DEFAULT ''",
+            },
+            "connection_state": {
+                "cooldown_until": "TEXT NOT NULL DEFAULT ''",
             },
             "articles": {
                 "digest": "TEXT NOT NULL DEFAULT ''",
@@ -578,15 +582,30 @@ class Storage:
                 (status, datetime.now(timezone.utc).isoformat(), json.dumps(details, ensure_ascii=False), job_id),
             )
 
-    def set_connection_state(self, provider: str, state: str, message: str, reconnect_required: bool = False) -> None:
+    def set_connection_state(
+        self,
+        provider: str,
+        state: str,
+        message: str,
+        reconnect_required: bool = False,
+        cooldown_until: str = "",
+    ) -> None:
         with self.connect() as db:
             db.execute(
                 """
-                INSERT INTO connection_state(provider,state,message,reconnect_required,updated_at)
-                VALUES(?,?,?,?,?) ON CONFLICT(provider) DO UPDATE SET state=excluded.state,
-                message=excluded.message,reconnect_required=excluded.reconnect_required,updated_at=excluded.updated_at
+                INSERT INTO connection_state(provider,state,message,reconnect_required,cooldown_until,updated_at)
+                VALUES(?,?,?,?,?,?) ON CONFLICT(provider) DO UPDATE SET state=excluded.state,
+                message=excluded.message,reconnect_required=excluded.reconnect_required,
+                cooldown_until=excluded.cooldown_until,updated_at=excluded.updated_at
                 """,
-                (provider, state, message, int(reconnect_required), datetime.now(timezone.utc).isoformat()),
+                (
+                    provider,
+                    state,
+                    message,
+                    int(reconnect_required),
+                    cooldown_until,
+                    datetime.now(timezone.utc).isoformat(),
+                ),
             )
 
     def connection_state(self, provider: str) -> dict[str, Any] | None:
