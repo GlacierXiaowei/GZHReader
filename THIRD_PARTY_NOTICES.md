@@ -1,19 +1,34 @@
 # Third-Party Notices
 
-This repository vendors source code from the following upstream project:
+## `rachelos/we-mp-rss`
 
-## `wewe-rss`
+- 上游仓库：<https://github.com/rachelos/we-mp-rss>
+- 上游许可：MIT
+- 固定参考提交：`c3a52fe13ff895086af53bfc5c946219549ece00`
+- 提交说明：`fix: collect WeChat articles through WeRead`
+- 许可证副本：`third_party/licenses/we-mp-rss-MIT.txt`
 
-- Upstream repository: <https://github.com/cooderl/wewe-rss>
-- Vendored baseline: `v2.6.1`
-- Upstream license: MIT
-- Local path in this repository: `third_party/wewe-rss/`
+GZHReader 参考并改写了以下文件中的实现思想：
 
-The upstream project's original copyright and license terms remain in effect for
-the vendored source. See:
+- `core/wx/model/weread_mp.py`
+  - 微信读书文章列表解析
+  - `originalId` 到微信文章链接的转换
+  - 分页 offset 规则
+  - 列表与正文请求间隔
+  - 错误码分类
+  - 追赶未完成时不推进游标
+- `core/wx/model/test_weread_mp.py`
+  - 响应解析、分页、失败恢复和正文补抓测试思路
+- `core/wx/model/playwright_mp.py`
+  - 浏览器请求监听与页面状态判断思路
+- `driver/playwright_driver.py`
+  - Playwright 生命周期和浏览器清理思路
 
-- [third_party/wewe-rss/LICENSE](third_party/wewe-rss/LICENSE)
+本地实现位于：
 
-GZHReader integrates and packages a locally maintained copy of `wewe-rss` for
-Windows distribution. Repository-specific patches and packaging changes may be
-applied on top of the vendored baseline over time.
+- `src/gzhreader_core/providers/weread.py`
+- `src/gzhreader_core/browser/auth.py`
+
+本项目没有复制或运行完整的 `we-mp-rss` 仓库，也不直接 import 其 Python 包。相关逻辑已改写到 GZHReader 命名空间，并替换了数据库、配置、错误消息、任务调度和桌面通信接口。
+
+MIT 许可证要求的版权和许可文本保存在上述许可证副本中。

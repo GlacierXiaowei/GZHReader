@@ -1,28 +1,35 @@
 # Changelog
 
-All notable changes to this project will be documented in this file.
-
-## [v2.0.0] - 2026-03-27
-
-### Changed
-- Rebuilt the product around a bundled local RSS service instead of a Docker-managed workflow.
-- Replaced the old wizard-style control panel with a calmer editorial workspace and a dedicated settings page.
-- Switched the primary runtime model to local SQLite-backed storage for both GZHReader and bundled `wewe-rss`, using separate database files.
-- Renamed CLI service management from Docker-centric commands to `gzhreader service ...`.
+## [3.0.0] - 2026-08-05
 
 ### Added
-- Vendored upstream `wewe-rss` source under `third_party/wewe-rss/`.
-- Added `THIRD_PARTY_NOTICES.md` and a recorded design baseline in `.impeccable.md`.
-- Added `scripts/build_wewe_rss.ps1` to build a distributable bundled `wewe-rss` runtime.
-- Added packaged runtime support in the PyInstaller/Inno Setup build chain.
-- Added a new local service manager with health checks, PID management, log tailing, and admin URL launching.
-- Added new home/settings templates and a dual-theme editorial UI system.
 
-### Removed
-- Removed Docker Desktop, WSL, MySQL, compose scaffolding, and container-first language from the primary product path.
-- Removed the old step-by-step onboarding wizard, Docker-blocked landing page, and sidebar-heavy control panel layout.
-
-## [v1.5.0] - 2026-03-14
+- 新增 Tauri 2 + Vue 3 Windows 本地桌面工作台。
+- 新增 Python JSON-RPC Sidecar，不监听本地端口。
+- 新增通过公众号文章链接识别和关注公众号的流程。
+- 新增可见 Edge/Chrome 微信读书扫码连接与凭据自动捕获。
+- 新增微信读书文章列表分页、正文获取、节流、退避和认证失效处理。
+- 新增 SQLite WAL、FTS5、本地未读状态、同步任务和每日自动备份。
+- 新增文章摘要、关键要点、标签、一句话结论和每日简报。
+- 新增用户可配置的刷新频率和每日简报时间。
+- 新增托盘常驻、聚合通知、开机启动和 Tauri 签名更新配置。
 
 ### Changed
-- Refined the earlier dashboard layout, Docker onboarding copy, and status presentation.
+
+- 首次同步限制为近 30 天、最多 20 篇文章。
+- 摘要服务仅保留 OpenAI 兼容接口。
+- Timeout、Retries、Temperature 固定在代码内部，不再向普通用户显示。
+- 新版数据使用 `%LOCALAPPDATA%\GZHReader\workspace-v3`，不迁移旧数据库。
+- 界面改为克制的本地阅读工具风格，不使用渐变、玻璃拟态或 AI 装饰图案。
+
+### Removed
+
+- 移除 FastAPI、Uvicorn、Jinja、HTMX 和网页界面。
+- 移除 Typer、Console Entry、CLI 快捷方式和 Windows Task Scheduler。
+- 移除 RSS/Atom 主流程、feedparser、wewe-rss 和远程 Bridge。
+- 移除 bundled Node runtime、Docker、Compose、MySQL 和旧 Inno Setup 发布链。
+- 移除 `weread.111965.xyz`、`PLATFORM_URL` 和 `/feeds/all.atom` 等旧运行路径。
+
+## [2.0.0] - 2026-03-27
+
+- 旧版 bundled RSS 服务版本。该架构已在 3.0.0 中完全移除。

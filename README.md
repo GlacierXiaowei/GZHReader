@@ -1,174 +1,154 @@
 # GZHReader
 
-<p align="center">
-  <img src="src/gzhreader/static/brand/gzhreader-icon.svg" alt="GZHReader" width="120" />
-</p>
+GZHReader 是面向普通用户的 Windows 本地公众号阅读工作台。用户粘贴一篇公众号文章链接后，可以关注对应公众号、接收新文章、生成内容摘要，并在每天指定时间得到 Markdown 简报。
 
-<p align="center">
-  <strong>把公众号阅读整理成每天可回看的本地日报</strong>
-</p>
+## 产品形态
 
-<p align="center">
-  <img src="https://img.shields.io/badge/Platform-Windows-blue?style=flat-square" alt="Windows supported" />
-  <img src="https://img.shields.io/badge/Powered%20by-Python%20%7C%20SQLite-2ea44f?style=flat-square" alt="Tech Stack" />
-  <img src="https://img.shields.io/badge/Output-Markdown-lightgrey?style=flat-square" alt="Markdown" />
-  <img src="https://img.shields.io/badge/Version-v2.0.0-111827?style=flat-square" alt="v2.0.0" />
-</p>
+- Windows 10/11 x64 桌面应用。
+- Tauri 2 + Vue 3 工作台。
+- Python Core 作为内部 Sidecar，通过 stdin/stdout JSON-RPC 通信。
+- 本地 SQLite、FTS5 全文搜索、WAL 和自动备份。
+- 直接连接微信读书 Web，不经过 wewe-rss、远程 Bridge 或 RSS 中转服务。
+- 不提供网页服务器、公开 HTTP API、CLI、Docker 或 bundled Node runtime。
 
-<p align="center">
-  <a href="https://github.com/zhiwuyazhe-fjr/GZHReader/issues">问题反馈</a> ·
-  <a href="THIRD_PARTY_NOTICES.md">第三方说明</a>
-</p>
+```text
+Tauri 2 + Vue 3
+        ↕ JSON-RPC
+GZHReader Python Core
+        ↓
+微信读书 Web
+        ↓
+SQLite + 内容摘要 + 每日简报
+```
 
----
+## 用户功能
 
-## 💡 简介
+1. 粘贴任意一篇微信公众号文章链接。
+2. 确认识别出的公众号。
+3. 首次使用时在 Edge 或 Chrome 中扫码连接微信读书。
+4. 首次同步近 30 天、最多 20 篇文章。
+5. 后续按用户选择的频率自动刷新。
+6. 新文章自动生成内容摘要、关键要点、标签和一句话结论。
+7. 每天在用户设定的时间生成简报。
+8. 关闭主窗口后继续在系统托盘运行。
 
-**GZHReader** 是一个面向普通用户的**本地公众号阅读工作台**。
+刷新频率提供 15 分钟、30 分钟、1 小时、2 小时、4 小时和仅手动刷新。每日简报默认在 21:30 生成。
 
-它能将公众号内容自动抓取至本地，整理成适合深度阅读与回看的 Markdown 日报。不再让你的阅读节奏被各种应用的消息红点所牵引，回归专注与沉浸。
+## 内容整理服务
 
-💡 **开箱即用，无需折腾**：  
-只需安装一个主程序，内置公众号独立后台与 SQLite 本地存储，无需搭建复杂环境。
+仅支持 OpenAI 兼容接口。设置页只要求：
 
-## ✨ 核心特性
+- 服务地址
+- API Key
+- 模型名称
 
-- 📥 **本地聚合**：将所有公众号订阅集中到一个本地管理的后台中进行维护，数据掌握在自己手里。
-- 🔄 **智能刷新**：每次生成日报前，系统会自动刷新订阅列表，确保获取的内容总是最新。
-- 🤖 **AI 摘要支持**：既支持提取公众号内容的**纯整理版日报**，也支持接入 AI 大模型为你生成**智能阅读摘要**。
-- 📝 **Markdown 输出**：生成的日报是纯文本的 `.md` 格式文件，极度方便你进行后续编辑，或完美融合进 Obsidian、Notion 等笔记软件进行归档和同步。
-- 🎯 **零心智负担**：主路径专为普通用户设计，操作简单直观，不要求掌握任何容器或数据库的操作。
+内部固定参数为：
 
-## 🚀 快速开始
+- Timeout：90 秒
+- Retries：2
+- Temperature：0.2
 
-1. **打开主程序**：启动 `GZHReader`。
-2. **连接账号**：进入内置的公众号后台，扫码连接账号并维护你的订阅列表。
-3. **一键生成**：回到工作台主页，点击 **`立即生成今天`**。
-4. **查阅日报**：在本地设定好的目录里，即可享受当天的无打扰 Markdown 深度日报。
+这些参数不会显示在用户界面或普通配置文件中。未配置服务或调用失败时，文章采集仍会继续，并使用本地文本生成临时摘要。
 
-> **🔔 提示**：如果你暂时还没配置 AI 模型密钥，也没关系。GZHReader 依然会为你完美生成图文并茂的**纯整理版**无摘要日报。
+## 本地数据
 
----
+新版使用独立目录，不迁移或自动删除旧版数据：
 
-## 🛠️ 安装与运行
+```text
+%LOCALAPPDATA%\GZHReader\workspace-v3\
+  gzhreader.db
+  backups\
+  browser\
+  logs\
+  secrets\
+```
 
-### 📦 终端用户
+简报保存到：
 
-当前主目标平台为 **Windows** 系统。
+```text
+%USERPROFILE%\Documents\GZHReader\Briefings\YYYY-MM-DD.md
+```
 
-1. 下载并安装最新的 `GZHReader`。
-2. 首次打开时，程序会自动在后台准备好本地运行环境和公众号服务。
-3. 所有数据默认保存在本机，且**无需**额外安装任何外部数据库应用。
+微信读书凭据和摘要服务密钥使用 Windows DPAPI 加密，不以明文写入 SQLite。
 
-### 💻 开发者使用
+## 开发
 
-如果你希望参与开发或者从源码运行：
+### 环境
 
-**1. 准备环境**
+- Windows 10/11 x64
+- Python 3.11+
+- Node.js 20+
+- Rust stable
+- Visual Studio Build Tools 2022：MSVC C++ 工具链和 Windows SDK
+
+本机的常规构建工具链安装在：
+
+```text
+D:\tools\VSBuildTools2022
+E:\sdk\WindowsSDK-10.0.26100.8876
+```
+
+Windows SDK 通过系统目录联接注册为 `C:\Program Files (x86)\Windows Kits\10`，实际文件保存在 E 盘。`scripts/build_desktop.ps1` 会自动加载 Visual Studio Build Tools 环境。
+
+### 安装依赖
 
 ```powershell
 python -m venv .venv
-.\.venv\Scripts\activate
-pip install -e .[dev]
+.\.venv\Scripts\python.exe -m pip install -e ".[dev,build]"
+cd desktop
+npm ci
 ```
 
-**2. 构建内置服务**
+### 测试
 
 ```powershell
-.\scripts\build_wewe_rss.ps1
+$env:PYTHONPATH = "src"
+.\.venv\Scripts\python.exe -m pytest
+cd desktop
+npm run build
 ```
 
-**3. 启动主界面**
+### 构建 Sidecar
 
 ```powershell
-.\.venv\Scripts\python.exe -m gzhreader app
+.\scripts\build_sidecar.ps1
 ```
 
-<details>
-<summary><b>点击查看更多开发常用命令</b></summary>
-
-```powershell
-# 修复检查
-gzhreader doctor
-
-# 生成今天/指定日期的日报
-gzhreader run today
-gzhreader run date 2026-03-28
-
-# 服务管理
-gzhreader service start
-gzhreader service restart
-gzhreader service status
-gzhreader service open-admin
-```
-
-</details>
-
----
-
-## 🛡️ 关于账号体系
-
-经历最近一轮的重构，我们的账号体系已从“将远端平台代理 token 塞进数据库”全面升级为 **“本地桥接 + 本地会话托管”** 的过渡架构。
-
-这彻底解决了账号体系不稳的痛点：
-
-- **解耦平台**：本地后台不再硬编码依赖可能变更的远端平台代理 URL。
-- **杜绝过期数据**：系统不会再带着不可控的过期 token 在后台默默报错。
-
-⚙️ **新机制的工作方式：**
-
-- 旧版数据升级会被拦截，提醒重新连接以保障数据流通畅。
-- 本地会话桥安全托管最新登录态。
-- 任何行为（刷新、导入、生成）前会执行**可用性预检**。
-- 一旦失效，立即停止所有无关的网络请求，明确要求重连，不再“在暗中猜原因”。
-
-> ⚠️ 这并不代表账号“永不过期”，微信平台自身的会话时效仍存在。
-> 但这让登录控制权收回了本地：**更早识别、不再误判、杜绝无效生成**。
-
----
-
-## 📁 核心项目结构
+生成文件：
 
 ```text
-GZHReader/
-├── src/gzhreader/              # GZHReader 核心主程序模块
-├── third_party/wewe-rss/       # 已接管的内置公众号后台源码 (Vendored)
-├── scripts/                    # 各类环境、后端的构建与维护脚本
-│   └── build_wewe_rss.ps1 
-└── packaging/                  # 包含 Inno Setup 和 PyInstaller 的打包配置
+desktop\src-tauri\binaries\gzhreader-core-x86_64-pc-windows-msvc.exe
 ```
 
----
+### 构建桌面安装包
 
-## ❓ 常见问题 (FAQ)
+更新包必须签名。把私钥放在仓库外，并设置环境变量：
 
-<details>
-<summary><b>Q: 没有配置 AI 密钥，能不能生成日报？</b></summary>
-<b>可以。</b> 没有配置 AI 时，程序将会平稳降级，仅为你采集并提取原文生成纯整理版的精美 Markdown 日报。
-</details>
+```powershell
+$env:TAURI_SIGNING_PRIVATE_KEY_PATH = "$env:USERPROFILE\.tauri\gzhreader-updater.key"
+.\scripts\build_desktop.ps1
+```
 
-<details>
-<summary><b>Q: 为什么刷新数据时总是要求重新连接账号？</b></summary>
-当系统检测到微信那边的会话事实上已经失效时，会主动拦截并停止所有动作，避免继续使用旧记录污染你的数据库。此时明确地重新连接是防止账号被风控的最佳实践。
-</details>
+私钥不得提交到仓库。公开密钥已写入 `desktop/src-tauri/tauri.conf.json`。
 
-<details>
-<summary><b>Q: 我的隐私数据保存在什么地方？会不会上传？</b></summary>
-<b>完全在你的电脑上本地存储，绝不回传。</b>
-无论是 GZHReader 自身的元数据库、你维护的公众号后台库、Markdown 文件还是系统日志，通通保存在你的硬盘里。不会有外部连接和数据偷跑。
-</details>
+## 目录
 
----
+```text
+src/gzhreader_core/       Python 本地核心
+desktop/                  Vue/Tauri 桌面应用
+scripts/                  Sidecar 与桌面构建脚本
+tests/                    Python Core 测试
+third_party/licenses/     第三方许可证副本
+```
 
-## 📄 第三方声明与开源许可
+## 第三方代码
 
-本项目部分集成了 vendored 的 `wewe-rss` 开源源码，并严格遵循及保留原项目的各项声明和许可证书：
+微信读书文章解析、分页追赶、节流和错误处理参考并改写自 `rachelos/we-mp-rss` 的 MIT 许可实现。项目不会 import 或运行该仓库。详情见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
 
-- [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) - GZHReader 集成第三方组件开源说明
-- [third_party/wewe-rss/LICENSE](third_party/wewe-rss/LICENSE)
+## 注意
 
----
+微信读书 Web 接口并非稳定公开 API，未来可能发生变化。GZHReader 已实现认证失效停止请求、网络退避、风控冷却和失败不推进游标，但仍需随上游变化维护。
 
-<p align="center">
-  <strong>GZHReader</strong> v2.0.0 · <em>本地优先 · 阅读整理工作台</em>
-</p>
+## License
+
+MIT

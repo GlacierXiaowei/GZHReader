@@ -1,49 +1,44 @@
 # Python
 __pycache__/
 *.py[cod]
-*.pyo
 *.pyd
-
-# Virtualenv
 .venv/
-
-# Build metadata
-src/*.egg-info/
 *.egg-info/
 
-# Test/runtime caches
+# Test and local runtime
 .pytest_cache/
 .pytest_tmp/
-.playwright-cli/
-
-# Local secrets/config
-config.yaml
-docs/GITHUB_PUBLISHING.md
-
-# Runtime data
-data/
-output/
+.pytest_v3_tmp*/
+.playwright-mcp/
 .runtime/
-*.pid
-weread-sessions.json
-third_party/wewe-rss/**/node_modules/
-third_party/wewe-rss/apps/server/dist/
-third_party/wewe-rss/apps/server/client/assets/
-third_party/wewe-rss/apps/web/*.tsbuildinfo
-third_party/wewe-rss/apps/server/*.tsbuildinfo
-
-# OS/editor
-.DS_Store
-Thumbs.db
-
-# Packaging/build outputs
+data/
+logs/
+output/
+config.yaml
 config.yaml.bak
+
+# Desktop dependencies and build output
+desktop/node_modules/
+desktop/dist/
+desktop/src-tauri/target/
+desktop/src-tauri/binaries/*.exe
+
+# Repository build output
 build/
 dist/
 release/
-installer/Output/
-logs/
 htmlcov/
 .coverage
+
+# Local signing material
+*.key
+*.key.pub
+
+# OS and editor
+.DS_Store
+Thumbs.db
+.vscode/
+
+# Local agent notes
 AGENTS.md
 TECH-README.md

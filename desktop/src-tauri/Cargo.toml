@@ -1,0 +1,28 @@
+[package]
+name = "gzhreader-desktop"
+version = "3.0.0"
+description = "GZHReader local WeChat official account workspace"
+authors = ["GZHReader contributors"]
+license = "MIT"
+repository = "https://github.com/zhiwuyazhe-fjr/GZHReader"
+edition = "2021"
+rust-version = "1.77.2"
+
+[lib]
+name = "gzhreader_desktop_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2.6.3", features = [] }
+
+[dependencies]
+serde_json = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+log = "0.4"
+tauri = { version = "2.11.3", features = ["tray-icon"] }
+tauri-plugin-log = "2"
+tauri-plugin-shell = "2.3.5"
+tauri-plugin-notification = "2.3.3"
+tauri-plugin-autostart = "2.5.1"
+tauri-plugin-updater = "2.10.1"
+tauri-plugin-process = "2.3.1"

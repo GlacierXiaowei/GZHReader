@@ -1,53 +1,35 @@
 [build-system]
-requires = ["setuptools>=68", "wheel"]
+requires = ["setuptools>=77", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "gzhreader"
+name = "gzhreader-core"
 dynamic = ["version"]
-description = "RSS-based WeChat official account daily briefing generator"
+description = "Local desktop core for GZHReader"
 readme = "README.md"
 requires-python = ">=3.11"
+license = "MIT"
 dependencies = [
   "beautifulsoup4>=4.12.3",
-  "feedparser>=6.0.11",
-  "fastapi>=0.116.1",
+  "chardet>=5.2,<6",
   "httpx>=0.28.1",
-  "jinja2>=3.1.6",
-  "Markdown>=3.7",
   "playwright>=1.52.0",
-  "pydantic>=2.10.6",
-  "python-multipart>=0.0.20",
-  "pyyaml>=6.0.2",
   "readability-lxml>=0.8.4.1",
-  "typer>=0.15.1",
-  "tzdata>=2025.2",
-  "uvicorn>=0.35.0",
 ]
 
 [project.optional-dependencies]
-dev = [
-  "pytest>=8.3.4",
-]
-build = [
-  "pyinstaller>=6.12",
-]
-
-[project.scripts]
-gzhreader = "gzhreader.console_entry:main"
-gzhreader-gui = "gzhreader.gui_entry:main"
+dev = ["pytest>=8.3.4"]
+build = ["pyinstaller>=6.12"]
 
 [tool.setuptools]
 package-dir = {"" = "src"}
 
 [tool.setuptools.dynamic]
-version = {attr = "gzhreader.__version__"}
+version = {attr = "gzhreader_core.__version__"}
 
 [tool.setuptools.packages.find]
 where = ["src"]
-
-[tool.setuptools.package-data]
-gzhreader = ["templates/*.html", "static/vendor/*.js", "static/brand/*"]
+include = ["gzhreader_core*"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]
