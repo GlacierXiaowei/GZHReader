@@ -1,4 +1,4 @@
-﻿<script setup lang="ts">
+<script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { listen } from '@tauri-apps/api/event'
 import { isPermissionGranted, requestPermission, sendNotification } from '@tauri-apps/plugin-notification'
@@ -194,7 +194,7 @@ async function notify(title: string, body: string) {
   <div class="app-shell" :class="{ loading }">
     <aside class="sidebar">
       <div class="brand">
-        <div class="brand-mark">阅</div>
+        <img class="brand-mark" src="/gzhreader-logo.svg" alt="" aria-hidden="true" />
         <div><strong>GZHReader</strong><span>公众号工作台</span></div>
       </div>
       <nav class="nav-list" aria-label="主导航">
@@ -304,5 +304,3 @@ async function notify(title: string, body: string) {
     <div v-if="article" class="drawer-backdrop" @click.self="article = null"><aside class="article-drawer"><button class="drawer-close" @click="article = null">关闭</button><div class="article-detail-head"><span class="article-meta">{{ article.source_name }} · {{ formatTime(article.published_at) }}</span><h1>{{ article.title }}</h1><p v-if="article.takeaway" class="takeaway">{{ article.takeaway }}</p></div><section class="summary-section"><div class="section-heading"><h2>内容摘要</h2><button class="text-button" @click="retrySummary">重新整理</button></div><p>{{ article.summary || '正在整理内容…' }}</p><ul v-if="article.key_points?.length"><li v-for="point in article.key_points" :key="point">{{ point }}</li></ul><div class="tag-line"><i v-for="tag in article.tags" :key="tag">{{ tag }}</i></div></section><section class="content-section"><h2>正文</h2><p>{{ article.content || '正文暂时无法获取，请打开微信原文阅读。' }}</p></section><button class="primary-button full" @click="core.call('system.open_url', { url: article.url })">打开微信原文</button></aside></div>
   </div>
 </template>
-
-
