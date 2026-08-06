@@ -32,4 +32,6 @@ def test_scheduler_reschedules_and_respects_briefing_skip(tmp_path):
 def test_weread_browser_response_classification():
     assert classify_articles_payload({"reviews": []})[0] == "ready"
     assert classify_articles_payload({"errCode": -2041, "errMsg": "-2041"})[0] == "captcha"
-    assert classify_articles_payload({"errCode": -2010, "errMsg": "user missing"})[0] == "login"
+    assert classify_articles_payload({"errCode": -2041, "errMsg": "操作过于频繁，请稍后再试"})[0] == "cooldown"
+    assert classify_articles_payload({"errCode": -2010, "errMsg": "user missing"})[0] == "cooldown"
+    assert classify_articles_payload({"errCode": -2012, "errMsg": "user missing"})[0] == "login"

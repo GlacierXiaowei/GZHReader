@@ -33,6 +33,9 @@ class CoreApp:
         configure_logging(self.paths.logs)
         self.storage = Storage(self.paths.db, self.paths.backups)
         self.vault = CredentialVault(self.paths.secrets)
+        stored_connection = self.storage.connection_state("weread")
+        if stored_connection and stored_connection.get("reconnect_required"):
+            self.vault.clear("weread")
         self.provider = WeReadProvider(self.vault)
         self.resolver = ArticleLinkResolver(
             self.paths.link_browser_profile,
@@ -156,16 +159,31 @@ class CoreApp:
 
     def _connection_status(self) -> dict[str, Any]:
         stored = self.storage.connection_state("weread")
-        if stored and stored.get("state") == "cooldown":
+        if stored:
+            state = str(stored.get("state") or "")
             raw_until = str(stored.get("cooldown_until") or "")
-            try:
-                until = datetime.fromisoformat(raw_until)
-            except ValueError:
-                until = None
-            if until and until > datetime.now(timezone.utc):
+            if state == "cooldown":
+                try:
+                    until = datetime.fromisoformat(raw_until)
+                except ValueError:
+                    until = None
+                if until and until > datetime.now(timezone.utc):
+                    return {
+                        "state": "cooldown",
+                        "message": str(stored.get("message") or "微信读书暂时限制了验证尝试"),
+                        "reconnect_required": True,
+                        "cooldown_until": raw_until,
+                    }
                 return {
-                    "state": "cooldown",
-                    "message": str(stored.get("message") or "人机验证尝试过于频繁，请稍后再试"),
+                    "state": "disconnected",
+                    "message": "可以重新连接微信读书",
+                    "reconnect_required": True,
+                    "cooldown_until": "",
+                }
+            if state in {"disconnected", "error"} and stored.get("reconnect_required"):
+                return {
+                    "state": "disconnected",
+                    "message": str(stored.get("message") or "需要重新连接微信读书"),
                     "reconnect_required": True,
                     "cooldown_until": raw_until,
                 }
@@ -235,8 +253,9 @@ class CoreApp:
             except Exception as exc:
                 logger.exception("WeRead login failed")
                 message = str(exc) or "连接没有完成"
-                if "过于频繁" in message or "稍后再试" in message:
-                    cooldown_until = (datetime.now(timezone.utc) + timedelta(hours=6)).isoformat()
+                if "过于频繁" in message or "稍后再试" in message or "24 小时" in message:
+                    self.vault.clear("weread")
+                    cooldown_until = (datetime.now(timezone.utc) + timedelta(hours=24)).isoformat()
                     self.storage.set_connection_state("weread", "cooldown", message, True, cooldown_until)
                     self.emit("provider.cooldown", {"message": message, "cooldown_until": cooldown_until})
                 else:
@@ -304,4 +323,3 @@ class RpcServer:
 
 def main() -> None:
     RpcServer().run()
-

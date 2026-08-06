@@ -10,3 +10,55 @@
 /* WebView 内保留滚动能力，但隐藏占用空间的系统滚动条。 */
 html,body,#app,.workspace,.article-drawer{scrollbar-width:none;-ms-overflow-style:none}
 html::-webkit-scrollbar,body::-webkit-scrollbar,#app::-webkit-scrollbar,.workspace::-webkit-scrollbar,.article-drawer::-webkit-scrollbar{display:none;width:0;height:0}
+/* 可收起侧栏 */
+.app-shell{--sidebar-width:224px;grid-template-columns:var(--sidebar-width) minmax(0,1fr);transition:grid-template-columns .18s ease}
+.app-shell.sidebar-collapsed{--sidebar-width:72px}
+.sidebar{width:var(--sidebar-width);transition:width .18s ease,padding .18s ease}
+.brand-copy,.nav-label,.connection span:last-child{white-space:nowrap}
+.sidebar-toggle{position:absolute;top:25px;right:-13px;width:27px;height:27px;border:1px solid var(--line);border-radius:50%;background:var(--paper);color:var(--muted);display:grid;place-items:center;padding:0;z-index:2;box-shadow:0 2px 8px rgba(30,40,36,.08)}
+.sidebar-toggle:hover{color:var(--accent);border-color:#aebbb5}
+.sidebar-toggle:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.sidebar-toggle svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+.sidebar-collapsed .sidebar{padding-left:9px;padding-right:9px}
+.sidebar-collapsed .brand{justify-content:center;padding-left:0;padding-right:0}
+.sidebar-collapsed .brand-copy,.sidebar-collapsed .nav-label,.sidebar-collapsed .connection span:last-child,.sidebar-collapsed .count{display:none}
+.sidebar-collapsed .nav-item{justify-content:center;gap:0;padding-left:0;padding-right:0}
+.sidebar-collapsed .nav-item svg{flex:0 0 18px}
+.sidebar-collapsed .connection{justify-content:center;margin-left:5px;margin-right:5px;padding-left:0;padding-right:0}
+
+/* 每日简报 Markdown 阅读版式 */
+.briefing-page{max-width:1440px}
+.briefing-layout{grid-template-columns:minmax(176px,220px) minmax(0,1fr);width:100%}
+.briefing-index{min-width:0}
+.briefing-document{box-sizing:border-box;width:100%;max-width:none;min-width:0;padding:30px clamp(24px,4vw,58px) 56px;overflow:hidden}
+.briefing-heading{display:flex;align-items:baseline;justify-content:space-between;gap:18px;padding-bottom:18px;border-bottom:1px solid var(--line)}
+.briefing-heading span{color:var(--accent);font-size:11px;font-weight:700;letter-spacing:1.2px}
+.briefing-heading strong{font:500 24px/1.2 Georgia,"Microsoft YaHei UI",serif;white-space:nowrap}
+.briefing-overview{margin:24px 0 30px}
+.briefing-markdown{width:100%;min-width:0;color:#35403b;font-size:14px;line-height:1.85;overflow-wrap:anywhere;word-break:break-word}
+.briefing-markdown>:first-child{margin-top:0}
+.briefing-markdown>:last-child{margin-bottom:0}
+.briefing-markdown h1,.briefing-markdown h2,.briefing-markdown h3,.briefing-markdown h4{color:var(--ink);scroll-margin-top:24px}
+.briefing-markdown h1{font:500 28px/1.35 Georgia,"Microsoft YaHei UI",serif;margin:34px 0 18px}
+.briefing-markdown h2{font-size:20px;line-height:1.45;margin:34px 0 14px;padding-bottom:9px;border-bottom:1px solid var(--line)}
+.briefing-markdown h3{font-size:16px;line-height:1.5;margin:26px 0 10px}
+.briefing-markdown h4{font-size:14px;line-height:1.5;margin:22px 0 8px}
+.briefing-markdown p{margin:10px 0 16px}
+.briefing-markdown ul,.briefing-markdown ol{margin:10px 0 18px;padding-left:24px}
+.briefing-markdown li{margin:6px 0;padding-left:3px}
+.briefing-markdown a{color:var(--accent);text-decoration-thickness:1px;text-underline-offset:3px}
+.briefing-markdown blockquote{margin:20px 0;padding:4px 0 4px 17px;border-left:3px solid #8daf9f;color:var(--muted)}
+.briefing-markdown blockquote p{margin:7px 0}
+.briefing-markdown hr{height:1px;margin:30px 0;border:0;background:var(--line)}
+.briefing-markdown code{border:1px solid var(--line);border-radius:4px;background:#f1f2ee;padding:1px 5px;font:12px/1.6 Consolas,"SFMono-Regular",monospace}
+.briefing-markdown pre{max-width:100%;overflow-x:auto;margin:18px 0;padding:16px;border:1px solid var(--line);border-radius:6px;background:#f1f2ee;white-space:pre}
+.briefing-markdown pre code{border:0;background:transparent;padding:0}
+.briefing-markdown table{display:block;width:100%;max-width:100%;overflow-x:auto;border-collapse:collapse;margin:18px 0}
+.briefing-markdown th,.briefing-markdown td{min-width:120px;padding:9px 12px;border:1px solid var(--line);text-align:left;vertical-align:top}
+.briefing-markdown th{background:#eff1ed;color:var(--ink);font-weight:650}
+.briefing-markdown img{display:block;max-width:100%;height:auto;margin:18px auto}
+:root[data-theme="dark"] .sidebar-toggle{background:var(--paper);border-color:#4b514e;box-shadow:0 2px 8px rgba(0,0,0,.22)}
+:root[data-theme="dark"] .briefing-markdown{color:#c5ccc8}
+:root[data-theme="dark"] .briefing-markdown code,:root[data-theme="dark"] .briefing-markdown pre,:root[data-theme="dark"] .briefing-markdown th{background:#222624}
+@media(prefers-color-scheme:dark){:root[data-theme="system"] .sidebar-toggle{background:var(--paper);border-color:#4b514e;box-shadow:0 2px 8px rgba(0,0,0,.22)}:root[data-theme="system"] .briefing-markdown{color:#c5ccc8}:root[data-theme="system"] .briefing-markdown code,:root[data-theme="system"] .briefing-markdown pre,:root[data-theme="system"] .briefing-markdown th{background:#222624}}
+@media(max-width:1100px){.briefing-layout{grid-template-columns:176px minmax(0,1fr)}.briefing-document{padding-left:26px;padding-right:26px}.briefing-heading{align-items:flex-start;flex-direction:column;gap:5px}}

@@ -9,7 +9,7 @@ from typing import Callable
 from playwright.sync_api import sync_playwright
 
 from ..credentials import CredentialVault
-from ..providers.weread import BASE_URL, build_mp_reader_url
+from ..providers.weread import BASE_URL, build_mp_reader_url, is_risk_control_message
 
 logger = logging.getLogger(__name__)
 
@@ -26,8 +26,10 @@ def classify_articles_payload(payload: object) -> tuple[str, int, str]:
     if not code and "reviews" in payload:
         return "ready", 0, message
     if code == -2041:
-        return "captcha", code, message
-    if code in {-2010, -2012}:
+        return ("cooldown" if is_risk_control_message(message) else "captcha"), code, message
+    if code == -2010:
+        return "cooldown", code, message
+    if code == -2012:
         return "login", code, message
     if code:
         return "error", code, message
@@ -79,7 +81,7 @@ class WeReadLoginCapture:
             return {"accepted": False, "message": "\u8fde\u63a5\u7a97\u53e3\u5df2\u7ecf\u6253\u5f00"}
         self._cancel.clear()
         captured: dict[str, str | float] = {}
-        state = {"verified": False, "captcha_announced": False, "last_error": "", "payload": None}
+        state = {"verified": False, "captcha_announced": False, "risk_limited": False, "last_error": "", "payload": None}
         emit("auth.progress", {"stage": "opening", "message": "\u6b63\u5728\u6253\u5f00\u5fae\u4fe1\u8bfb\u4e66"})
         try:
             with sync_playwright() as playwright:
@@ -99,10 +101,10 @@ class WeReadLoginCapture:
                 if context is None:
                     raise RuntimeError("\u672a\u627e\u5230\u53ef\u7528\u7684 Edge \u6216 Chrome \u6d4f\u89c8\u5668")
                 try:
-                    page = context.pages[0] if context.pages else context.new_page()
-                    page.add_init_script(
+                    context.add_init_script(
                         "window.close = function(){ console.log('[GZHReader] ignored window.close during verification'); };"
                     )
+                    page = context.pages[0] if context.pages else context.new_page()
 
                     def capture_request(request) -> None:
                         if "/web/mp/articles" not in request.url:
@@ -120,13 +122,23 @@ class WeReadLoginCapture:
                         try:
                             payload = response.json()
                             status, code, message = classify_articles_payload(payload)
-                            logger.info("WeRead browser validation response: status=%s code=%s", status, code)
+                            logger.info(
+                                "WeRead browser validation response: status=%s code=%s message=%s",
+                                status,
+                                code,
+                                message[:120],
+                            )
                             if status == "ready":
                                 snapshot = self._credential_snapshot(context, response.request, source_id)
                                 if snapshot:
                                     captured.update(snapshot)
                                 state["payload"] = payload
                                 state["verified"] = True
+                                return
+                            if status == "cooldown":
+                                state["risk_limited"] = True
+                                state["last_error"] = "微信读书操作过于频繁，请 24 小时后再重新连接"
+                                emit("auth.progress", {"stage": "cooldown", "message": state["last_error"]})
                                 return
                             if status == "captcha":
                                 if not state["captcha_announced"]:
@@ -135,19 +147,23 @@ class WeReadLoginCapture:
                                         "auth.progress",
                                         {
                                             "stage": "captcha",
-                                            "message": "\u8bf7\u5728\u6d4f\u89c8\u5668\u4e2d\u5b8c\u6210\u4eba\u673a\u9a8c\u8bc1\uff0c\u5b8c\u6210\u524d\u7a97\u53e3\u4e0d\u4f1a\u5173\u95ed",
+                                            "message": "请在浏览器中完成人机验证，完成前窗口不会关闭",
                                         },
                                     )
                                 return
                             if status == "login":
-                                state["last_error"] = "\u767b\u5f55\u72b6\u6001\u5df2\u5931\u6548"
+                                state["last_error"] = "登录状态已失效"
                             elif status == "error":
-                                state["last_error"] = message or f"\u9a8c\u8bc1\u5931\u8d25\uff08{code}\uff09"
+                                state["last_error"] = message or f"验证失败（{code}）"
                         except Exception:
                             logger.debug("Unable to inspect WeRead validation response", exc_info=True)
 
-                    page.on("request", capture_request)
-                    page.on("response", capture_response)
+                    def attach_page(browser_page) -> None:
+                        browser_page.on("request", capture_request)
+                        browser_page.on("response", capture_response)
+
+                    attach_page(page)
+                    context.on("page", attach_page)
                     page.goto(BASE_URL, wait_until="domcontentloaded", timeout=30_000)
                     login_deadline = time.time() + timeout_seconds
 
@@ -176,14 +192,17 @@ class WeReadLoginCapture:
                         "auth.progress",
                         {"stage": "verifying", "message": "\u767b\u5f55\u6210\u529f\uff0c\u6b63\u5728\u9a8c\u8bc1\u516c\u4f17\u53f7\u8bbf\u95ee"},
                     )
+                    page.wait_for_timeout(1500)
                     page.goto(build_mp_reader_url(source_id), wait_until="domcontentloaded", timeout=30_000)
                     verification_deadline = max(login_deadline, time.time() + 180)
-                    cooldown_announced = False
-                    cooldown_started_at = 0.0
                     while time.time() < verification_deadline and not self._cancel.is_set() and not state["verified"]:
+                        if state["risk_limited"]:
+                            break
                         if page.is_closed():
                             remaining_pages = [item for item in context.pages if not item.is_closed()]
                             if not remaining_pages:
+                                if state["risk_limited"]:
+                                    break
                                 raise RuntimeError("人机验证窗口已关闭，请重新连接")
                             page = remaining_pages[-1]
                         try:
@@ -191,20 +210,16 @@ class WeReadLoginCapture:
                             body_text = page.locator("body").inner_text(timeout=500)
                         except Exception:
                             continue
-                        if "操作过于频繁" in body_text or "请稍后再试" in body_text:
-                            if not cooldown_announced:
-                                cooldown_announced = True
-                                emit(
-                                    "auth.progress",
-                                    {
-                                        "stage": "cooldown",
-                                        "message": "人机验证尝试过于频繁，请稍后再试",
-                                    },
-                                )
-                            state["last_error"] = "人机验证尝试过于频繁，请稍后再试"
+                        if is_risk_control_message(body_text):
+                            state["risk_limited"] = True
+                            state["last_error"] = "微信读书操作过于频繁，请 24 小时后再重新连接"
+                            emit("auth.progress", {"stage": "cooldown", "message": state["last_error"]})
+                            break
 
                     if self._cancel.is_set():
                         raise RuntimeError("\u5df2\u53d6\u6d88\u8fde\u63a5")
+                    if state["risk_limited"]:
+                        raise RuntimeError(state["last_error"])
                     if not state["verified"]:
                         raise TimeoutError(state["last_error"] or "\u4eba\u673a\u9a8c\u8bc1\u7b49\u5f85\u8d85\u65f6\uff0c\u8bf7\u91cd\u65b0\u8fde\u63a5")
                     if not captured:

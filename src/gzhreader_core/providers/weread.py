@@ -18,11 +18,24 @@ RATE_LIMIT_CODES = {-2010}
 
 
 class WeReadError(RuntimeError):
-    def __init__(self, code: str | int, message: str, reconnect: bool = False, cooldown: bool = False):
+    def __init__(
+        self,
+        code: str | int,
+        message: str,
+        reconnect: bool = False,
+        cooldown: bool = False,
+        cooldown_minutes: int = 360,
+    ):
         super().__init__(message)
         self.code = str(code)
         self.reconnect = reconnect
         self.cooldown = cooldown
+        self.cooldown_minutes = max(int(cooldown_minutes), 1)
+
+
+def is_risk_control_message(message: str) -> bool:
+    value = str(message or "").lower()
+    return any(marker in value for marker in ("频繁", "稍后再试", "操作太快", "risk control"))
 
 
 def build_mp_url(original_id: str) -> str:
@@ -72,11 +85,24 @@ def raise_response_error(payload: dict) -> None:
         return
     message = str(payload.get("errMsg") or payload.get("errmsg") or "内容暂时无法更新")
     if code == -2041:
+        if is_risk_control_message(message):
+            raise WeReadError(
+                code,
+                "微信读书操作过于频繁，请 24 小时后再重新连接",
+                reconnect=True,
+                cooldown=True,
+                cooldown_minutes=24 * 60,
+            )
         raise WeReadError(code, "需要重新完成人机验证", reconnect=True)
     if code in AUTH_CODES:
         raise WeReadError(code, "登录状态已失效", reconnect=True)
     if code in RATE_LIMIT_CODES:
-        raise WeReadError(code, "更新过于频繁，请稍后再试", cooldown=True)
+        raise WeReadError(
+            code,
+            "更新过于频繁，请稍后再试",
+            cooldown=True,
+            cooldown_minutes=6 * 60,
+        )
     raise WeReadError(code, message)
 
 
@@ -167,10 +193,10 @@ class WeReadProvider:
         self._health = ProviderHealth("ready", "微信读书已连接")
 
     def mark_error(self, error: WeReadError) -> None:
-        if error.reconnect:
+        if error.cooldown:
+            self._health = ProviderHealth("cooldown", str(error), error.reconnect)
+        elif error.reconnect:
             self._health = ProviderHealth("disconnected", "登录状态已失效", True)
-        elif error.cooldown:
-            self._health = ProviderHealth("cooldown", "更新过于频繁，请稍后再试")
         else:
             self._health = ProviderHealth("error", "内容暂时无法更新")
 
@@ -242,7 +268,7 @@ class WeReadProvider:
         if response.status_code in {401, 403}:
             raise WeReadError(response.status_code, "登录状态已失效", reconnect=True)
         if response.status_code == 429:
-            raise WeReadError(429, "更新过于频繁，请稍后再试", cooldown=True)
+            raise WeReadError(429, "更新过于频繁，请稍后再试", cooldown=True, cooldown_minutes=6 * 60)
         if response.status_code != 200:
             raise WeReadError(response.status_code, "内容暂时无法更新")
         try:
@@ -314,7 +340,7 @@ class WeReadProvider:
         if response.status_code in {401, 403}:
             raise WeReadError(response.status_code, "登录状态已失效", reconnect=True)
         if response.status_code == 429:
-            raise WeReadError(429, "更新过于频繁，请稍后再试", cooldown=True)
+            raise WeReadError(429, "更新过于频繁，请稍后再试", cooldown=True, cooldown_minutes=6 * 60)
         if response.status_code != 200:
             raise WeReadError(response.status_code, "正文暂时无法获取")
         return extract_mp_content(response.text)

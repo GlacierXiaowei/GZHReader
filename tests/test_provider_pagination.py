@@ -53,6 +53,21 @@ def test_auth_error_is_classified(tmp_path):
         raise AssertionError("auth error was not raised")
 
 
+def test_risk_control_error_uses_24_hour_cooldown(tmp_path):
+    vault = CredentialVault(tmp_path)
+    vault.save("weread", {"cookie": "a=b", "ticket": "ticket"})
+    FakeClient.pages = [{"errCode": -2041, "errMsg": "操作过于频繁，请稍后再试"}]
+    provider = WeReadProvider(vault, client_factory=FakeClient, sleep=lambda _: None)
+    try:
+        provider.list_articles(SourceProfile("MP_WXS_1", "公众号"))
+    except WeReadError as exc:
+        assert exc.reconnect
+        assert exc.cooldown
+        assert exc.cooldown_minutes == 24 * 60
+    else:
+        raise AssertionError("risk control error was not raised")
+
+
 def test_current_wpa_header_is_preserved():
     headers = WeReadProvider._headers(
         "wr_vid=1; wr_skey=skey",

@@ -131,21 +131,40 @@ class ReaderService:
                     self._credential_notified = False
                 except WeReadError as exc:
                     self.provider.mark_error(exc)
-                    if exc.reconnect:
+                    if exc.cooldown:
+                        delay = exc.cooldown_minutes
+                        cooldown_until = (datetime.now(timezone.utc) + timedelta(minutes=delay)).isoformat()
+                        if exc.reconnect:
+                            self.provider.vault.clear("weread")
+                            stop_for_auth = True
+                        self.storage.set_connection_state(
+                            "weread",
+                            "cooldown",
+                            str(exc),
+                            exc.reconnect,
+                            cooldown_until,
+                        )
+                        emit(
+                            "provider.cooldown",
+                            {
+                                "source_id": source.id,
+                                "message": str(exc),
+                                "hours": max(1, (delay + 59) // 60),
+                                "cooldown_until": cooldown_until,
+                            },
+                        )
+                    elif exc.reconnect:
+                        self.provider.vault.clear("weread")
                         self.storage.set_connection_state("weread", "disconnected", "登录状态已失效", True)
                         if not self._credential_notified:
                             emit("credential.expired", {"message": "登录状态已失效，请重新连接"})
                             self._credential_notified = True
                         stop_for_auth = True
                         delay = 60
-                    elif exc.cooldown:
-                        self.storage.set_connection_state("weread", "cooldown", "更新过于频繁，请稍后再试")
-                        emit("provider.cooldown", {"source_id": source.id, "message": str(exc), "hours": 6})
-                        delay = 360
                     else:
                         delay = self._network_backoff(int(row.get("failure_count") or 0))
                     self.storage.source_sync_failure(source.id, str(exc), delay, cooldown=exc.cooldown)
-                    result.errors.append(f"{source.name}?{exc}")
+                    result.errors.append(f"{source.name}：{exc}")
                 except Exception as exc:
                     delay = self._network_backoff(int(row.get("failure_count") or 0))
                     self.storage.source_sync_failure(source.id, "内容暂时无法更新", delay)

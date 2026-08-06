@@ -5,6 +5,7 @@ import { isPermissionGranted, requestPermission, sendNotification } from '@tauri
 import { enable as enableAutostart, disable as disableAutostart } from '@tauri-apps/plugin-autostart'
 import { check } from '@tauri-apps/plugin-updater'
 import { relaunch } from '@tauri-apps/plugin-process'
+import MarkdownIt from 'markdown-it'
 import { core } from './lib/core'
 
 type Page = 'home' | 'sources' | 'articles' | 'briefings' | 'settings'
@@ -22,7 +23,10 @@ const selectedSource = ref('')
 const settingsDraft = ref<any>({})
 const aiKey = ref('')
 const selectedBriefingDay = ref('')
+const sidebarCollapsed = ref(localStorage.getItem('gzhreader.sidebarCollapsed') === '1')
+const markdown = new MarkdownIt({ html: false, linkify: true, breaks: true })
 const currentBriefing = computed(() => bootstrap.value.briefings.find((item: any) => item.day === selectedBriefingDay.value) || bootstrap.value.briefings[0] || null)
+const renderedBriefing = computed(() => markdown.render(currentBriefing.value?.markdown || ''))
 
 const nav = [
   { id: 'home', label: '首页', icon: 'home' },
@@ -38,6 +42,7 @@ const filteredArticles = computed(() => bootstrap.value.articles.filter((a: any)
 }))
 const connectionReady = computed(() => bootstrap.value.connection?.state === 'ready')
 watch(() => settingsDraft.value.theme, applyTheme)
+watch(sidebarCollapsed, value => localStorage.setItem('gzhreader.sidebarCollapsed', value ? '1' : '0'))
 
 const today = new Intl.DateTimeFormat('zh-CN', { month: 'long', day: 'numeric', weekday: 'long' }).format(new Date())
 
@@ -181,6 +186,20 @@ async function checkForUpdates(showResult = true) {
     if (showResult) message.value = '暂时无法检查更新，请稍后再试'
   }
 }
+async function openBriefingLink(event: MouseEvent) {
+  const target = (event.target as HTMLElement).closest('a')
+  const href = target?.getAttribute('href') || ''
+  if (!href) return
+  event.preventDefault()
+  try {
+    const url = new URL(href)
+    if (!['http:', 'https:'].includes(url.protocol)) throw new Error('unsupported protocol')
+    await core.call('system.open_url', { url: url.toString() })
+  } catch {
+    message.value = '这个链接暂时无法打开'
+  }
+}
+
 async function notify(title: string, body: string) {
   try {
     let allowed = await isPermissionGranted()
@@ -191,26 +210,36 @@ async function notify(title: string, body: string) {
 </script>
 
 <template>
-  <div class="app-shell" :class="{ loading }">
+  <div class="app-shell" :class="{ loading, 'sidebar-collapsed': sidebarCollapsed }">
     <aside class="sidebar">
       <div class="brand">
         <img class="brand-mark" src="/gzhreader-logo.svg" alt="" aria-hidden="true" />
-        <div><strong>GZHReader</strong><span>公众号工作台</span></div>
+        <div class="brand-copy"><strong>GZHReader</strong><span>公众号工作台</span></div>
       </div>
+      <button
+        class="sidebar-toggle"
+        type="button"
+        :title="sidebarCollapsed ? '展开侧栏' : '收起侧栏'"
+        :aria-label="sidebarCollapsed ? '展开侧栏' : '收起侧栏'"
+        :aria-pressed="sidebarCollapsed"
+        @click="sidebarCollapsed = !sidebarCollapsed"
+      >
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path :d="sidebarCollapsed ? 'm9 6 6 6-6 6' : 'm15 6-6 6 6 6'"/></svg>
+      </button>
       <nav class="nav-list" aria-label="主导航">
-        <button v-for="item in nav" :key="item.id" :class="['nav-item', { active: page === item.id }]" @click="page = item.id">
+        <button v-for="item in nav" :key="item.id" :class="['nav-item', { active: page === item.id }]" :title="sidebarCollapsed ? item.label : ''" @click="page = item.id">
           <svg v-if="item.icon === 'home'" viewBox="0 0 24 24"><path d="M4 10.5 12 4l8 6.5V20H5a1 1 0 0 1-1-1z"/><path d="M9 20v-6h6v6"/></svg>
           <svg v-else-if="item.icon === 'sources'" viewBox="0 0 24 24"><circle cx="8" cy="12" r="3"/><circle cx="17" cy="7" r="3"/><circle cx="17" cy="17" r="3"/><path d="m10.5 10.5 4-2M10.5 13.5l4 2"/></svg>
           <svg v-else-if="item.icon === 'articles'" viewBox="0 0 24 24"><path d="M6 3h9l4 4v14H6z"/><path d="M14 3v5h5M9 12h7M9 16h7"/></svg>
           <svg v-else viewBox="0 0 24 24"><path d="M5 4h14v16H5z"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>
-          <span>{{ item.label }}</span>
+          <span class="nav-label">{{ item.label }}</span>
           <i v-if="item.id === 'articles' && bootstrap.dashboard.unread_count" class="count">{{ bootstrap.dashboard.unread_count }}</i>
         </button>
       </nav>
       <div class="sidebar-bottom">
-        <button :class="['nav-item', { active: page === 'settings' }]" @click="page = 'settings'">
+        <button :class="['nav-item', { active: page === 'settings' }]" :title="sidebarCollapsed ? '设置' : ''" @click="page = 'settings'">
           <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19 13.5v-3l-2-.7-.7-1.7.9-1.9-2.1-2.1-1.9.9-1.7-.7-.7-2h-3l-.7 2-1.7.7-1.9-.9-2.1 2.1.9 1.9-.7 1.7-2 .7v3l2 .7.7 1.7-.9 1.9 2.1 2.1 1.9-.9 1.7.7.7 2h3l.7-2 1.7-.7 1.9.9 2.1-2.1-.9-1.9.7-1.7z"/></svg>
-          设置
+          <span class="nav-label">设置</span>
         </button>
         <div class="connection" :class="connectionReady ? 'ok' : 'warn'">
           <span class="status-dot"></span><span>{{ bootstrap.connection.message || '正在检查连接' }}</span>
@@ -288,7 +317,19 @@ async function notify(title: string, body: string) {
 
       <section v-else-if="page === 'briefings'" class="page briefing-page">
         <header class="page-header"><div><p class="eyebrow">阅读归档</p><h1>每日简报</h1><p>每天的重要内容和主题都保存在这里。</p></div><button class="secondary-button" @click="generateBriefing">生成今日简报</button></header>
-        <div v-if="bootstrap.briefings.length" class="briefing-layout"><aside class="briefing-index"><button v-for="item in bootstrap.briefings" :key="item.day" :class="{ active: currentBriefing?.day === item.day }" @click="selectedBriefingDay = item.day"><strong>{{ item.day }}</strong><span>{{ item.article_count }} 篇文章</span></button></aside><article v-if="currentBriefing" class="briefing-document"><div class="briefing-actions"><button class="text-button" @click="generateBriefing">重新生成</button><button class="text-button" @click="openBriefingFolder">打开文件目录</button></div><h2>{{ currentBriefing.day }}</h2><p class="briefing-overview">{{ currentBriefing.overview }}</p><pre>{{ currentBriefing.markdown }}</pre></article></div>
+        <div v-if="bootstrap.briefings.length" class="briefing-layout">
+          <aside class="briefing-index">
+            <button v-for="item in bootstrap.briefings" :key="item.day" :class="{ active: currentBriefing?.day === item.day }" @click="selectedBriefingDay = item.day">
+              <strong>{{ item.day }}</strong><span>{{ item.article_count }} 篇文章</span>
+            </button>
+          </aside>
+          <article v-if="currentBriefing" class="briefing-document">
+            <div class="briefing-actions"><button class="text-button" @click="generateBriefing">重新生成</button><button class="text-button" @click="openBriefingFolder">打开文件目录</button></div>
+            <div class="briefing-heading"><span>每日简报</span><strong>{{ currentBriefing.day }}</strong></div>
+            <p v-if="currentBriefing.overview" class="briefing-overview">{{ currentBriefing.overview }}</p>
+            <div class="briefing-markdown" @click="openBriefingLink" v-html="renderedBriefing"></div>
+          </article>
+        </div>
         <div v-else class="empty-state"><h3>还没有每日简报</h3><p>到设定时间后，应用会自动整理当天的文章。</p><button class="secondary-button" @click="generateBriefing">生成今日简报</button></div>
       </section>
 
